@@ -2,7 +2,13 @@
 
 This a hook for [letsencrypt.sh](https://github.com/lukas2511/letsencrypt.sh) (a [Let's Encrypt](https://letsencrypt.org/) ACME client) that allows you to use [OVH](https://www.ovh.com/) DNS records to respond to `dns-01` challenges. Requires Python and your OVH API Credentials being set in the ovh.conf file.
 
-Based on [kappataumu](https://github.com/kappataumu/letsencrypt-cloudflare-hook) work.
+Let's Encrypt validation is usually done by file: you will have to add a specified file into a specific folder, or even you will have to start Let's Encrypt program instead of your web-server to serve the validation file.
+With DNS validation, you don't have to touch anything on your web-server, you just have to modify a record on your domain name DNS entries, and you're all set.
+
+OVH Hook for letsencrypt.sh take care of that part: it will automatically connect to the OVH API and modify your DNS record in order to match the Let's Encrypt challenge. At the end, you will receive your SSL certificate without any connection to your web-server !
+
+
+Based on [kappataumu](https://github.com/kappataumu/letsencrypt-cloudflare-hook) work for a competitor DNS validation hook.
 
 ## Setup
 
