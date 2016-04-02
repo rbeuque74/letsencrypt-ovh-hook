@@ -86,11 +86,17 @@ def deploy_cert(args):
     return
 
 
+def unchanged_cert(args):
+    logger.info(' + Certificate still valid. Nothing to do here')
+    return
+
+
 def main(argv):
     ops = {
         'deploy_challenge': create_txt_record,
         'clean_challenge' : delete_txt_record,
         'deploy_cert'     : deploy_cert,
+        'unchanged_cert'  : unchanged_cert,
     }
     logger.info(" + OVH hook executing: {0}".format(argv[0]))
     ops[argv[0]](argv[1:])
