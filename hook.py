@@ -4,6 +4,7 @@
 import logging
 import time
 import ovh
+import ovh.exceptions
 import re
 import subprocess
 import sys
@@ -15,6 +16,7 @@ logger.setLevel(logging.DEBUG)
 client = ovh.Client()
 DNS_SERVER_DIG = "208.67.220.220" # DNS from OpenDNS, usually fast
 PATTERN_DOMAIN = re.compile(r'^(.*)\.([^\.]+\.[^\.]+)$')
+PATTERN_SUB_DOMAIN = re.compile(r'^(.*)\.([^\.]+)$')
 
 
 def retrieve_domain_and_record_name(domain):
@@ -22,9 +24,25 @@ def retrieve_domain_and_record_name(domain):
     record_name = '_acme-challenge'
     if result:
         sub_domain, domain = result[0]
+        sub_domain, domain = handling_special_tlds_case(sub_domain, domain)
         record_name = "{0}.{1}".format('_acme-challenge', sub_domain)
 
     return (record_name, domain)
+
+
+def handling_special_tlds_case(sub_domain, domain):
+    """Some tlds are formatted in two parts: for example, .asso.fr
+       We have to retrive the right domain and subdomain to match with OVH API
+    """
+    try:
+        client.get("/domain/zone/{0}".format(domain))
+    except ovh.exceptions.ResourceNotFoundError as exception_catched:
+        result = PATTERN_SUB_DOMAIN.findall(sub_domain)
+        if not result:
+            raise exception_catched
+        sub_domain, alternative_sub_domain = result[0]
+        return handling_special_tlds_case(sub_domain, "{0}.{1}".format(alternative_sub_domain, domain))
+    return (sub_domain, domain)
 
 
 def check_if_record_is_deployed(domain, token):
