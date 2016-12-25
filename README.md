@@ -1,6 +1,6 @@
-# OVH hook for letsencrypt.sh ACME client
+# OVH hook for dehydrated ACME client
 
-This a hook for [letsencrypt.sh](https://github.com/lukas2511/letsencrypt.sh) (a [Let's Encrypt](https://letsencrypt.org/) ACME client) that allows you to use [OVH](https://www.ovh.com/) DNS records to respond to `dns-01` challenges. Requires Python and your OVH API Credentials being set in the ovh.conf file.
+This a hook for [dehydrated](https://github.com/lukas2511/dehydrated) (a [Let's Encrypt](https://letsencrypt.org/) ACME client) that allows you to use [OVH](https://www.ovh.com/) DNS records to respond to `dns-01` challenges. Requires Python and your OVH API Credentials being set in the ovh.conf file.
 
 Let's Encrypt validation is usually done by file: you will have to add a specified file into a specific folder, or even you will have to start Let's Encrypt program instead of your web-server to serve the validation file.
 With DNS validation, you don't have to touch anything on your web-server, you just have to modify a record on your domain name DNS entries, and you're all set.
@@ -13,8 +13,8 @@ Based on [kappataumu](https://github.com/kappataumu/letsencrypt-cloudflare-hook)
 ## Setup
 
 ```
-$ git clone https://github.com/lukas2511/letsencrypt.sh
-$ cd letsencrypt.sh
+$ git clone https://github.com/lukas2511/dehydrated
+$ cd dehydrated
 $ mkdir hooks
 $ git clone https://github.com/rbeuque74/letsencrypt-ovh-hook hooks/ovh
 $ pip install -r hooks/ovh/requirements.txt
@@ -26,7 +26,7 @@ $ editor ovh.conf
 ## Usage
 
 ```
-$ ./letsencrypt.sh -s example.ovh.csr -d example.ovh -t dns-01 -k 'hooks/ovh/hook.py'
+$ ./dehydrated -s example.ovh.csr -d example.ovh -t dns-01 -k 'hooks/ovh/hook.py'
 #
 # !! WARNING !! No main config file found, using default config!
 #
