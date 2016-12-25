@@ -145,12 +145,18 @@ def unchanged_cert(args):
     return
 
 
+def invalid_challenge(args):
+    logger.info(' + Challenge was invalid, please have a look')
+    return
+
+
 def main(argv):
     ops = {
         'deploy_challenge': create_txt_record,
         'clean_challenge': delete_txt_record,
         'deploy_cert': deploy_cert,
         'unchanged_cert': unchanged_cert,
+        "invalid_challenge": invalid_challenge,
     }
     logger.info(" + OVH hook executing: {0}".format(argv[0]))
     ops[argv[0]](argv[1:])
