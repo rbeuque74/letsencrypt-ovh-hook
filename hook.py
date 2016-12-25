@@ -14,12 +14,29 @@ logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.DEBUG)
 
 client = ovh.Client()
-DNS_SERVER_DIG = "208.67.220.220" # DNS from OpenDNS, usually fast
 PATTERN_DOMAIN = re.compile(r'^(.*)\.([^\.]+\.[^\.]+)$')
 PATTERN_SUB_DOMAIN = re.compile(r'^(.*)\.([^\.]+)$')
+REGEX_REMOVE_FINAL_DOT = re.compile(r"""(.*)\.$""")
+
+
+def _treat_popen_result(res):
+    """
+    When using Popen processes, we need to clean result that comes from subprocesses
+    """
+    res = res.decode("utf-8").split("\n")
+    try:
+        res.remove("")
+    except ValueError:
+        pass
+    if len(res) == 0:
+        return u""
+    return res[0]
 
 
 def retrieve_domain_and_record_name(domain):
+    """
+    Split domain name into sub_domain and primary domain
+    """
     result = PATTERN_DOMAIN.findall(domain)
     record_name = '_acme-challenge'
     if result:
@@ -45,18 +62,31 @@ def handling_special_tlds_case(sub_domain, domain):
     return (sub_domain, domain)
 
 
-def check_if_record_is_deployed(domain, token):
+def check_if_record_is_deployed(domain, dns_record, token):
+    """
+    Retrieve names servers of the domain, and check DNS record presence.
+    """
+    res = subprocess.Popen(['dig', 'NS', domain, '+short'],
+                           stdout=subprocess.PIPE).communicate()[0]
+    dns_server = _treat_popen_result(res)
+    if REGEX_REMOVE_FINAL_DOT.match(dns_server):
+        dns_server = REGEX_REMOVE_FINAL_DOT.sub(r"\1", dns_server)
     while True:
-        result = subprocess.Popen(['dig', '@{0}'.format(DNS_SERVER_DIG), '-t', 'TXT', domain, '+short'],
-                                  stdout=subprocess.PIPE).communicate()[0]
-        if token in str(result):
+        logger.debug("Testing DNS record against " + dns_server)
+        res = subprocess.Popen(['dig', '@{0}'.format(dns_server), 'TXT', '{}.{}'.format(dns_record, domain), '+short'],
+                               stdout=subprocess.PIPE).communicate()[0]
+        res = _treat_popen_result(res)
+        if token in str(res):
             return
-        logger.debug("Got: " + str(result) + " /  Expecting: " + str(token))
+        logger.debug("Got: " + str(res) + " /  Expecting: " + str(token))
         logger.info(" + Record not available yet. Checking again in 10s...")
         time.sleep(10)
 
 
 def refresh_ovh_dns_zone(domain):
+    """
+    Refresh DNS Zone against OVH API
+    """
     client.post('/domain/zone/{0}/refresh'.format(domain))
     logger.info("+ Zone refreshed on OVH side")
     soa = client.get('/domain/zone/{0}/soa'.format(domain))
@@ -64,6 +94,9 @@ def refresh_ovh_dns_zone(domain):
 
 
 def create_txt_record(args):
+    """
+    Create TXT record for the Dehydrated ACME challenge
+    """
     domain, token = args[0], args[2]
 
     record_name, domain = retrieve_domain_and_record_name(domain)
@@ -74,10 +107,13 @@ def create_txt_record(args):
     logger.debug("+ TXT record created, ID: {0}".format(record_id))
     refresh_ovh_dns_zone(domain)
 
-    check_if_record_is_deployed(record_name + "." + domain, token)
+    check_if_record_is_deployed(domain, record_name, token)
 
 
 def delete_txt_record(args):
+    """
+    Delete TXT record from DNS zone after challenge have been sucessfully answered
+    """
     domain, token = args[0], args[2]
     if not domain:
         logger.info(" + http_request() error in letsencrypt.sh?")
@@ -112,9 +148,9 @@ def unchanged_cert(args):
 def main(argv):
     ops = {
         'deploy_challenge': create_txt_record,
-        'clean_challenge' : delete_txt_record,
-        'deploy_cert'     : deploy_cert,
-        'unchanged_cert'  : unchanged_cert,
+        'clean_challenge': delete_txt_record,
+        'deploy_cert': deploy_cert,
+        'unchanged_cert': unchanged_cert,
     }
     logger.info(" + OVH hook executing: {0}".format(argv[0]))
     ops[argv[0]](argv[1:])
