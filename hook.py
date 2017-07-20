@@ -6,6 +6,7 @@ import time
 import ovh
 import ovh.exceptions
 import dns.resolver
+import dns.exception
 import re
 import sys
 import socket
@@ -56,6 +57,8 @@ def check_if_record_is_deployed(domain, dns_record, token):
     dns_servers = dns.resolver.query(domain, 'NS')
     resolver = dns.resolver.Resolver()
     resolver.nameservers = []
+    resolver.timeout = 3
+    resolver.lifetime = 5
     for dns_server in dns_servers:
         addresses = socket.getaddrinfo(dns_server.to_text(), 53)
         for family, socktype, proto, canonname, sockaddr in addresses:
@@ -72,6 +75,8 @@ def check_if_record_is_deployed(domain, dns_record, token):
                     return
         except dns.resolver.NXDOMAIN:
             logger.info(" + Record not available yet. Checking again in 10s...")
+        except dns.exception.Timeout:
+            logger.info(" + DNS Request timeout. Checking again in 10s...")
         logger.debug("Got: " + str(', '.join(txt_values)) + " /  Expecting: " + str(token))
         time.sleep(10)
 
