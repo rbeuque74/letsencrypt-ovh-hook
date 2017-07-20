@@ -5,9 +5,10 @@ import logging
 import time
 import ovh
 import ovh.exceptions
+import dns.resolver
 import re
-import subprocess
 import sys
+import socket
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
@@ -17,20 +18,6 @@ client = ovh.Client()
 PATTERN_DOMAIN = re.compile(r'^(.*)\.([^\.]+\.[^\.]+)$')
 PATTERN_SUB_DOMAIN = re.compile(r'^(.*)\.([^\.]+)$')
 REGEX_REMOVE_FINAL_DOT = re.compile(r"""(.*)\.$""")
-
-
-def _treat_popen_result(res):
-    """
-    When using Popen processes, we need to clean result that comes from subprocesses
-    """
-    res = res.decode("utf-8").split("\n")
-    try:
-        res.remove("")
-    except ValueError:
-        pass
-    if len(res) == 0:
-        return u""
-    return res[0]
 
 
 def retrieve_domain_and_record_name(domain):
@@ -66,20 +53,26 @@ def check_if_record_is_deployed(domain, dns_record, token):
     """
     Retrieve names servers of the domain, and check DNS record presence.
     """
-    res = subprocess.Popen(['dig', 'NS', domain, '+short'],
-                           stdout=subprocess.PIPE).communicate()[0]
-    dns_server = _treat_popen_result(res)
-    if REGEX_REMOVE_FINAL_DOT.match(dns_server):
-        dns_server = REGEX_REMOVE_FINAL_DOT.sub(r"\1", dns_server)
+    dns_servers = dns.resolver.query(domain, 'NS')
+    resolver = dns.resolver.Resolver()
+    resolver.nameservers = []
+    for dns_server in dns_servers:
+        addresses = socket.getaddrinfo(dns_server.to_text(), 53)
+        for family, socktype, proto, canonname, sockaddr in addresses:
+            resolver.nameservers.append(sockaddr[0])
     while True:
-        logger.debug("Testing DNS record against " + dns_server)
-        res = subprocess.Popen(['dig', '@{0}'.format(dns_server), 'TXT', '{}.{}'.format(dns_record, domain), '+short'],
-                               stdout=subprocess.PIPE).communicate()[0]
-        res = _treat_popen_result(res)
-        if token in str(res):
-            return
-        logger.debug("Got: " + str(res) + " /  Expecting: " + str(token))
-        logger.info(" + Record not available yet. Checking again in 10s...")
+        logger.debug("Testing DNS record against " + ', '.join(resolver.nameservers))
+        txt_values = []
+        try:
+            txt_records = resolver.query('{}.{}'.format(dns_record, domain), 'TXT')
+            for txt_record in txt_records:
+                txt_values.append(txt_record.to_text())
+            for txt_value in txt_values:
+                if token in txt_value:
+                    return
+        except dns.resolver.NXDOMAIN:
+            logger.info(" + Record not available yet. Checking again in 10s...")
+        logger.debug("Got: " + str(', '.join(txt_values)) + " /  Expecting: " + str(token))
         time.sleep(10)
 
 
