@@ -6,6 +6,7 @@ import time
 import ovh
 import ovh.exceptions
 import dns.resolver
+import dns.exception
 import re
 import sys
 import socket
@@ -56,6 +57,8 @@ def check_if_record_is_deployed(domain, dns_record, token):
     dns_servers = dns.resolver.query(domain, 'NS')
     resolver = dns.resolver.Resolver()
     resolver.nameservers = []
+    resolver.timeout = 3
+    resolver.lifetime = 5
     for dns_server in dns_servers:
         addresses = socket.getaddrinfo(dns_server.to_text(), 53)
         for family, socktype, proto, canonname, sockaddr in addresses:
@@ -72,6 +75,8 @@ def check_if_record_is_deployed(domain, dns_record, token):
                     return
         except dns.resolver.NXDOMAIN:
             logger.info(" + Record not available yet. Checking again in 10s...")
+        except dns.exception.Timeout:
+            logger.info(" + DNS Request timeout. Checking again in 10s...")
         logger.debug("Got: " + str(', '.join(txt_values)) + " /  Expecting: " + str(token))
         time.sleep(10)
 
@@ -150,6 +155,10 @@ def startup_hook(args):
     logger.info(' + Startup OVH hook')
     return
 
+def request_failure(args):
+    logger.info(' + Request to Let\'s Encrypt failed, exiting hook')
+    return
+
 def main(argv):
     ops = {
         'deploy_challenge': create_txt_record,
@@ -159,6 +168,7 @@ def main(argv):
         'invalid_challenge': invalid_challenge,
         'exit_hook': exit_hook,
         'startup_hook': startup_hook,
+        'request_failure': request_failure,
     }
     logger.info(" + OVH hook executing: {0}".format(argv[0]))
     ops[argv[0]](argv[1:])
