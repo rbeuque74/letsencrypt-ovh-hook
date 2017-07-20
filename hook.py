@@ -149,6 +149,13 @@ def invalid_challenge(args):
     logger.info(' + Challenge was invalid, please have a look')
     return
 
+def exit_hook(args):
+    logger.info(' + Exiting OVH hook')
+    return
+
+def startup_hook(args):
+    logger.info(' + Startup OVH hook')
+    return
 
 def main(argv):
     ops = {
@@ -156,7 +163,9 @@ def main(argv):
         'clean_challenge': delete_txt_record,
         'deploy_cert': deploy_cert,
         'unchanged_cert': unchanged_cert,
-        "invalid_challenge": invalid_challenge,
+        'invalid_challenge': invalid_challenge,
+        'exit_hook': exit_hook,
+        'startup_hook': startup_hook,
     }
     logger.info(" + OVH hook executing: {0}".format(argv[0]))
     ops[argv[0]](argv[1:])
