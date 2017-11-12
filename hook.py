@@ -60,7 +60,7 @@ def check_if_record_is_deployed(domain, dns_record, token):
     resolver.timeout = 3
     resolver.lifetime = 5
     for dns_server in dns_servers:
-        addresses = socket.getaddrinfo(dns_server.to_text(), 53)
+        addresses = socket.getaddrinfo(dns_server.to_text(), 53, 0, 0, socket.IPPROTO_TCP)
         for family, socktype, proto, canonname, sockaddr in addresses:
             resolver.nameservers.append(sockaddr[0])
     while True:
