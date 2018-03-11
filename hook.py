@@ -142,21 +142,12 @@ def unchanged_cert(args):
     logger.info(' + Certificate still valid. Nothing to do here')
     return
 
-
 def invalid_challenge(args):
-    logger.info(' + Challenge was invalid, please have a look')
-    return
-
-def exit_hook(args):
-    logger.info(' + Exiting OVH hook')
-    return
-
-def startup_hook(args):
-    logger.info(' + Startup OVH hook')
+    logger.warning(' + Challenge was invalid, please have a look')
     return
 
 def request_failure(args):
-    logger.info(' + Request to Let\'s Encrypt failed, exiting hook')
+    logger.warning(" + Request to Let's Encrypt failed, exiting hook")
     return
 
 def main(argv):
@@ -166,11 +157,13 @@ def main(argv):
         'deploy_cert': deploy_cert,
         'unchanged_cert': unchanged_cert,
         'invalid_challenge': invalid_challenge,
-        'exit_hook': exit_hook,
-        'startup_hook': startup_hook,
         'request_failure': request_failure,
     }
     logger.info(" + OVH hook executing: {0}".format(argv[0]))
+    if argv[0] not in ops:
+        logger.warning(' + OVH hook: unknown hook function ({0}); skipping...'.format(argv[0]))
+        return
+
     ops[argv[0]](argv[1:])
 
 
