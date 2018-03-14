@@ -73,7 +73,7 @@ def check_if_record_is_deployed(domain, dns_record, token):
             for txt_value in txt_values:
                 if token in txt_value:
                     return
-        except dns.resolver.NXDOMAIN:
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
             logger.info(" + Record not available yet. Checking again in 10s...")
         except dns.exception.Timeout:
             logger.info(" + DNS Request timeout. Checking again in 10s...")
