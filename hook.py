@@ -121,13 +121,17 @@ def delete_txt_record(args):
 
     records = client.get("/domain/zone/{0}/record".format(domain), fieldType='TXT', subDomain=record_name)
 
-    if len(records) <= 0:
-        raise Exception("No record found for {0}".format(record_name))
-    if len(records) > 1:
-        raise Exception("Too many record found for {0}. Please clean your DNS".format(record_name))
+    record_to_delete = None
+    for record_id in records:
+        record = client.get("/domain/zone/{0}/record/{1}".format(domain, record_id))
+        if record["target"] == token:
+            record_to_delete = record_id
+            break
+    else:
+        raise Exception("No DNS record matches for {0} domain and given ACME token".format(record_name))
 
     logger.debug(" + Deleting TXT record name: {0}".format(record_name))
-    client.delete('/domain/zone/{0}/record/{1}'.format(domain, records[0]))
+    client.delete('/domain/zone/{0}/record/{1}'.format(domain, record_to_delete))
     refresh_ovh_dns_zone(domain)
 
 
