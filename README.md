@@ -62,3 +62,21 @@ $ ./dehydrated -c
  + Done!
 ```
 
+
+### Log level
+
+Verbosity of OVH dehydrated hook can be configured using the ```level``` option:
+
+```
+$ cat config
+# warn level will only display errors
+HOOK=hooks/ovh/hook.py --level=warn
+
+# info level will display all humans readable logs (info is the default value if level option is not provided)
+HOOK=hooks/ovh/hook.py --level=info
+
+# for all debugging log
+HOOK=hooks/ovh/hook.py --level=debug
+```
+
+If ```level``` option is not provided, the default value ```info``` will be used.

@@ -13,12 +13,12 @@ import socket
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 client = ovh.Client()
 PATTERN_DOMAIN = re.compile(r'^(.*)\.([^\.]+\.[^\.]+)$')
 PATTERN_SUB_DOMAIN = re.compile(r'^(.*)\.([^\.]+)$')
-REGEX_REMOVE_FINAL_DOT = re.compile(r"""(.*)\.$""")
+PATTERN_LOG_LEVEL = re.compile(r'^--level=(\w+)$')
 
 
 def retrieve_domain_and_record_name(domain):
@@ -36,8 +36,9 @@ def retrieve_domain_and_record_name(domain):
 
 
 def handling_special_tlds_case(sub_domain, domain):
-    """Some tlds are formatted in two parts: for example, .asso.fr
-       We have to retrive the right domain and subdomain to match with OVH API
+    """
+    Some tlds are formatted in two parts: for example, .asso.fr
+    We have to retrieve the corresponding domain and subdomain to match with OVH API
     """
     try:
         client.get("/domain/zone/{0}".format(domain))
@@ -64,7 +65,7 @@ def check_if_record_is_deployed(domain, dns_record, token):
         for family, socktype, proto, canonname, sockaddr in addresses:
             resolver.nameservers.append(sockaddr[0])
     while True:
-        logger.debug("Testing DNS record against " + ', '.join(resolver.nameservers))
+        logger.debug(" + Testing DNS record against %s", ', '.join(resolver.nameservers))
         txt_values = []
         try:
             txt_records = resolver.query('{}.{}'.format(dns_record, domain), 'TXT')
@@ -74,10 +75,10 @@ def check_if_record_is_deployed(domain, dns_record, token):
                 if token in txt_value:
                     return
         except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
-            logger.info(" + Record not available yet. Checking again in 10s...")
+            logger.debug(" + Record not available yet. Checking again in 10s...")
         except dns.exception.Timeout:
-            logger.info(" + DNS Request timeout. Checking again in 10s...")
-        logger.debug("Got: " + str(', '.join(txt_values)) + " /  Expecting: " + str(token))
+            logger.debug(" + DNS Request timeout. Checking again in 10s...")
+        logger.debug(" + %s DNS entry value: %s ; expecting: '%s'", dns_record, ', '.join(txt_values), token)
         time.sleep(10)
 
 
@@ -86,9 +87,9 @@ def refresh_ovh_dns_zone(domain):
     Refresh DNS Zone against OVH API
     """
     client.post('/domain/zone/{0}/refresh'.format(domain))
-    logger.info("+ Zone refreshed on OVH side")
+    logger.debug(" + Zone refreshed on OVH side")
     soa = client.get('/domain/zone/{0}/soa'.format(domain))
-    logger.debug("+ SOA SERIAL of zone: {0}".format(soa['serial']))
+    logger.debug(" + SOA SERIAL of zone: %d", soa['serial'])
 
 
 def create_txt_record(args):
@@ -97,14 +98,17 @@ def create_txt_record(args):
     """
     domain, token = args[0], args[2]
 
+    logger.info("Deploying challenge for '%s' to OVH DNS", domain)
+
     record_name, domain = retrieve_domain_and_record_name(domain)
 
     dns_record = client.post("/domain/zone/{0}/record".format(domain), fieldType='TXT',
                              subDomain=record_name, target=token, ttl=1)
     record_id = dns_record['id']
-    logger.debug("+ TXT record created, ID: {0}".format(record_id))
+    logger.debug(" + TXT record created, ID: %d", record_id)
     refresh_ovh_dns_zone(domain)
 
+    logger.info("Challenge for '%s' deployed, waiting for DNS refresh", domain)
     check_if_record_is_deployed(domain, record_name, token)
 
 
@@ -113,9 +117,8 @@ def delete_txt_record(args):
     Delete TXT record from DNS zone after challenge have been sucessfully answered
     """
     domain, token = args[0], args[2]
-    if not domain:
-        logger.info(" + http_request() error in letsencrypt.sh?")
-        return
+
+    logger.info("Cleaning OVH DNS entries for '%s'", domain)
 
     record_name, domain = retrieve_domain_and_record_name(domain)
 
@@ -130,28 +133,36 @@ def delete_txt_record(args):
     else:
         raise Exception("No DNS record matches for {0} domain and given ACME token".format(record_name))
 
-    logger.debug(" + Deleting TXT record name: {0}".format(record_name))
+    logger.debug(" + Deleting TXT record name: %s", record_name)
     client.delete('/domain/zone/{0}/record/{1}'.format(domain, record_to_delete))
     refresh_ovh_dns_zone(domain)
 
 
 def deploy_cert(args):
+    """
+    deploy_cert is triggered when certificate have been generated and available on filesystem.
+    You can modify this function to move the certificates to your web-servers directory, and refresh web-servers to serve the new certificates.
+    """
     domain, privkey_pem, cert_pem, fullchain_pem, chain_pem, timestamp = args
-    logger.info(' + ssl_certificate: {0}'.format(fullchain_pem))
-    logger.info(' + ssl_certificate_key: {0}'.format(privkey_pem))
+    logger.info("Certificate successfully created for '%s'.", domain)
+    logger.info("Private key: %s", privkey_pem)
+    logger.info("Full chain certificate: %s", fullchain_pem)
     return
 
 
 def unchanged_cert(args):
-    logger.info(' + Certificate still valid. Nothing to do here')
+    domain = args[0]
+    logger.info("Certificate for '%s' is still valid.", domain)
     return
 
 def invalid_challenge(args):
-    logger.warning(' + Challenge was invalid, please have a look')
+    domain, response = args[0], args[1]
+    logger.warning("Challenge for domain '%s' was invalid, please have a look: %s", domain, response)
     return
 
 def request_failure(args):
-    logger.warning(" + Request to Let's Encrypt failed, exiting hook")
+    status_code, reason = args[0], args[1]
+    logger.warning("Request to Let's Encrypt failed: %s", reason)
     return
 
 def main(argv):
@@ -163,12 +174,25 @@ def main(argv):
         'invalid_challenge': invalid_challenge,
         'request_failure': request_failure,
     }
-    logger.info(" + OVH hook executing: {0}".format(argv[0]))
-    if argv[0] not in ops:
-        logger.warning(' + OVH hook: unknown hook function ({0}); skipping...'.format(argv[0]))
+
+    # Log level
+    log_level = PATTERN_LOG_LEVEL.findall(argv[0])
+    if log_level:
+        level = log_level[0].lower()
+        if level in ('warn', 'warning'):
+            logger.setLevel(logging.WARNING)
+        elif level == 'info':
+            logger.setLevel(logging.INFO)
+        elif level == 'debug':
+            logger.setLevel(logging.DEBUG)
+        argv.pop(0)
+
+    action = argv[0]
+    args = argv[1:]
+    if action not in ops:
         return
 
-    ops[argv[0]](argv[1:])
+    ops[action](args)
 
 
 if __name__ == '__main__':
